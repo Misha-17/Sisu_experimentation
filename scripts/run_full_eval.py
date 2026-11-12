@@ -28,7 +28,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECTS = ("fastapi", "pydantic", "cpython-devguide")
-CORE = "normal,thinking,normal_long_budget,plain_rag"
+FIRST = "normal,plain_rag"
+CORE = "normal,plain_rag,normal_long_budget,thinking"
 ABLATIONS = "normal_e4b,lexical_only,dense_only,no_planning,no_review,no_neighbors"
 MODELS = ("gemma4:12b", "gemma4:e4b", "gpt-oss:20b")
 RESULT_ITEMS = ("questions.jsonl", "snapshots.json", "labels.json", "dropped.jsonl", "runs", "judgments",
@@ -157,7 +158,10 @@ def setup(runner: Runner) -> None:
     runner.run([python, "-m", "pytest", "tests", "-q"])
 
 
-def pilot(runner: Runner, project: str) -> None:
+def pilot(runner: Runner, project: str) -> bool:
+    """Run the pilot. Stops the run if `normal` is broken; returns False if
+    only `thinking` is broken, so the caller can skip it instead of wasting days."""
+
     runner.step(f"Pilot on {project}: 20 questions each for normal and thinking")
     runner.eval("index", "--project", project)
     runner.eval("run", "--project", project, "--variants", "normal,thinking", "--limit", "20")
@@ -166,19 +170,34 @@ def pilot(runner: Runner, project: str) -> None:
     if runner.eval("status", "--project", project, "--variants", "normal", "--check", "normal", check=False) == 3:
         raise StepFailed("The normal variant looks broken in the pilot (see the STOP line above). "
                          "Send the latest log in logs/ to Shivansh before running anything else.")
+    if runner.eval("status", "--project", project, "--variants", "thinking", "--check", "thinking", check=False) == 3:
+        runner.say("WARNING: the thinking variant looks broken in the pilot. It will be SKIPPED; "
+                   "everything else runs. Tell Shivansh.")
+        return False
+    return True
 
 
-def run_project(runner: Runner, project: str) -> list[Path]:
+def run_project(runner: Runner, project: str, *, thinking_ok: bool = True) -> list[Path]:
     saved = []
+    core = CORE if thinking_ok else ",".join(v for v in CORE.split(",") if v != "thinking")
     data = runner.root / "eval_data" / project
     runner.step(f"[{project}] indexing")
     runner.eval("index", "--project", project)
-    runner.step(f"[{project}] core variants: {CORE}")
-    runner.eval("run", "--project", project, "--variants", CORE, "--head-check")
+    runner.step(f"[{project}] first results: {FIRST}")
+    runner.eval("run", "--project", project, "--variants", FIRST, "--head-check")
+    runner.eval("judge", "--project", project, "--variants", FIRST)
+    runner.eval("report", "--project", project)
+    if not runner.dry_run:
+        path = save_results(runner.root, project, "first")
+        if path:
+            runner.say(f"Results saved: {path}  <- send this file to Shivansh")
+            saved.append(path)
+    runner.step(f"[{project}] core variants: {core}")
+    runner.eval("run", "--project", project, "--variants", core, "--head-check")
     runner.step(f"[{project}] judging core variants")
-    runner.eval("judge", "--project", project, "--variants", CORE)
+    runner.eval("judge", "--project", project, "--variants", core)
     if not (data / "calibration" / "calibration_sheet.csv").exists():
-        runner.eval("calibrate-export", "--project", project, "--variants", CORE, "--n", "100")
+        runner.eval("calibrate-export", "--project", project, "--variants", core, "--n", "100")
     runner.eval("report", "--project", project)
     runner.eval("status", "--project", project)
     if not runner.dry_run:
@@ -224,13 +243,13 @@ def main(argv: list[str] | None = None) -> int:
         if not available:
             raise StepFailed("No questions found under eval_data. Unzip the eval_data zip from Shivansh into "
                              f"{ROOT} first (RUNNING.md, step 3).")
-        pilot(runner, available[0])
+        thinking_ok = pilot(runner, available[0])
         if args.pilot_only:
             runner.step("Pilot finished. Send the status table above to Shivansh.")
             return 0
         saved = []
         for project in available:
-            saved += run_project(runner, project)
+            saved += run_project(runner, project, thinking_ok=thinking_ok)
         runner.step("All done. Send these files to Shivansh:")
         for path in saved:
             runner.say(f"  {path}")

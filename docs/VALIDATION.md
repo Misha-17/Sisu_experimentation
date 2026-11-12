@@ -4,10 +4,10 @@ This build changes the earlier V10 export in four ways: Gemma 4 replaces gpt-oss
 
 ## Checked
 
-- **161 tests passed** on Linux with Python 3.13, with numpy, pypdf, python-docx, beautifulsoup4 and pytest installed and **no PyTorch**. The E5 encoder is imported lazily, so retrieval falls back to its declared keyword lane in tests.
+- **162 tests passed** on Linux with Python 3.13, with numpy, pypdf, python-docx, beautifulsoup4 and pytest installed and **no PyTorch**. The E5 encoder is imported lazily, so retrieval falls back to its declared keyword lane in tests.
   - 119 original runtime and model-setup tests, unchanged.
   - 15 tests for thinking budgets, the Gemma `think` flag, ablation switches, the config check that refuses a thinking deadline too short for planning, and a check that the launch profiles equal the evaluated variants.
-  - 6 tests for the unattended runner (`scripts/run_full_eval.py`): command order, setup and pilot switches, the results zip, and the status health check that stops a broken run.
+  - 7 tests for the unattended runner (`scripts/run_full_eval.py`): command order, setup and pilot switches, the results zip, and the status health check that stops a broken run.
   - 21 tests for the evaluation pipeline. They cover link resolution for the three project configs and mining from recorded GitHub GraphQL and Discourse responses. They build a dated git repository and check that snapshots exclude docs written after the question. Then they run four variants end to end with the real index, engine and access manager and a scripted model. Judging, the report, the two review CSV round trips, the bootstrap and kappa, the access-control test (zero leaks), and isolation of variants from shell settings are also covered.
 
 ## Not checked here

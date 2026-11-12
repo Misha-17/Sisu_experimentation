@@ -88,13 +88,15 @@ def test_runner_order_in_dry_run(capsys):
     order = ["ollama list", "pip install --upgrade pip", "torch==2.11.0", "download_encoder.py", "ollama pull gemma4:12b",
              "ollama pull gpt-oss:20b", "pytest tests", "--variants normal,thinking --limit 20",
              "status --project fastapi --variants normal --check normal",
-             f"--variants {script.CORE} --head-check", f"judge --project fastapi --variants {script.CORE}",
+             "status --project fastapi --variants thinking --check thinking",
+             f"--variants {script.FIRST} --head-check", f"--variants {script.CORE} --head-check", f"judge --project fastapi --variants {script.CORE}",
              "calibrate-export --project fastapi", f"--variants {script.ABLATIONS}", "acl --project fastapi"]
     positions = [joined.find(item) for item in order]
     assert all(p >= 0 for p in positions), dict(zip(order, positions))
     assert positions == sorted(positions)
     # A report after the core phase, and a final one after the access-control test.
-    assert joined.count("report --project fastapi") == 2
+    assert joined.count("report --project fastapi") == 3
+    assert script.CORE.split(",")[-1] == "thinking"  # slowest variant last
     assert joined.rfind("report --project fastapi") > joined.find("acl --project fastapi")
 
 
@@ -121,3 +123,20 @@ def test_results_zip_has_only_results(tmp_path):
     assert "eval_data/toy/runs/normal.jsonl" in names and "eval_data/toy/report.md" in names
     assert "eval_data/toy/calibration/calibration_sheet.csv" in names
     assert not any(part in name for name in names for part in ("/repo/", "/snapshots/", "/workspaces/", "/api_cache/"))
+
+
+def test_broken_thinking_is_skipped_not_fatal(capsys):
+    script = _script()
+
+    class Fake(script.Runner):
+        def eval(self, *arguments, check=True):
+            super().eval(*arguments, check=check)
+            return 3 if "--check" in arguments and "thinking" in arguments[-1] else 0
+
+    runner = Fake(script.ROOT, dry_run=True)
+    assert script.pilot(runner, "fastapi") is False
+    script.run_project(runner, "fastapi", thinking_ok=False)
+    commands = [" ".join(c) for c in runner.commands]
+    after_pilot = [c for c in commands if "--limit 20" not in c and "status" not in c]
+    assert not any("thinking" in c for c in after_pilot)
+    assert any("normal,plain_rag,normal_long_budget --head-check" in c for c in after_pilot)
