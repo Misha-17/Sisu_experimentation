@@ -478,3 +478,28 @@ def test_fastapi_exports_code_examples_as_text():
     assert project.is_doc_path("docs_src/body/tutorial001.py")
     assert project.indexed_name("docs_src/body/tutorial001.py") == "docs_src/body/tutorial001.py.txt"
     assert not project.is_doc_path("fastapi/routing.py")
+
+
+def test_questions_from_before_the_docs_layout_are_dropped_not_fatal(tmp_path):
+    repo = tmp_path / "moved"
+    (repo / "old").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    (repo / "old" / "install.md").write_text("# Installing\n\nOld layout.\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "old layout", date="2023-11-10T12:00:00Z")
+    (repo / "docs").mkdir()
+    (repo / "old" / "install.md").rename(repo / "docs" / "install.md")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "move docs", date="2024-01-10T12:00:00Z")
+    project = _project(repo)
+    data = tmp_path / "data"
+    ensure_clone(project, data)
+    early = {**_mined()[0], "qid": "toy:early", "created_at": "2023-12-14T10:00:00Z",
+             "answer_created_at": "2024-01-20T11:00:00Z"}
+    late = {**_mined()[0], "qid": "toy:late", "created_at": "2024-02-14T10:00:00Z",
+            "answer_created_at": "2024-02-14T11:00:00Z"}
+    summary = build_snapshots(project, [early, late], data)
+    assert summary["questions_kept"] == 1
+    assert summary["drop_reasons"] == {"docs_layout_differs_at_question_date": 1}
+    assert summary["kept_by_year"] == {"2024": 1} and summary["dropped_by_year"] == {"2023": 1}
+    assert summary["granularity"] == "month"

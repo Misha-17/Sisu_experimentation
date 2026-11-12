@@ -122,6 +122,21 @@ def export_snapshot(project: Project, git: Git, commit: str, snapshots_dir: Path
     return tree
 
 
+def has_primary_root(project: Project, git: Git, commit: str) -> bool:
+    """True when the first docs root exists at ``commit``.
+
+    Projects move their docs (FastAPI moved them to docs/en/docs when it added
+    translations). Questions whose snapshot predates the configured layout are
+    dropped rather than answered against a tree with no docs in it.
+    """
+
+    primary = project.docs_roots[0] if project.docs_roots else ""
+    if primary == "":
+        return True
+    prefix = primary.rstrip("/") + "/"
+    return any(path.startswith(prefix) for path in git.files(commit))
+
+
 def _gold_status(project: Project, git: Git, commit: str, path: str, anchor: str) -> str:
     if path not in git.files(commit):
         return "file_added_later"
@@ -142,10 +157,13 @@ def build_snapshots(project: Project, questions: list[dict[str, Any]], data_dir:
     head = git.head(branch)
     kept, dropped = [], []
     for question in questions:
+        def drop(reason: str) -> None:
+            dropped.append({"qid": question["qid"], "created_at": question["created_at"], "reason": reason})
+
         answered_at = iso(parse_time(question["answer_created_at"]) + timedelta(seconds=1))
         answer_commit = git.commit_before(branch, answered_at)
         if answer_commit is None:
-            dropped.append({"qid": question["qid"], "reason": "answer_before_repo_history"})
+            drop("answer_before_repo_history")
             continue
         gold = []
         for link in question["doc_links"]:
@@ -153,12 +171,15 @@ def build_snapshots(project: Project, questions: list[dict[str, Any]], data_dir:
             if resolved and resolved not in [(g["path"], g["anchor"]) for g in gold]:
                 gold.append({"path": resolved[0], "anchor": resolved[1], "url": link})
         if not gold:
-            dropped.append({"qid": question["qid"], "reason": "links_not_resolvable_to_docs_files"})
+            drop("links_not_resolvable_to_docs_files")
             continue
         start = bucket_start(parse_time(question["created_at"]), granularity)
         snapshot = git.commit_before(branch, iso(start))
         if snapshot is None:
-            dropped.append({"qid": question["qid"], "reason": "question_before_repo_history"})
+            drop("question_before_repo_history")
+            continue
+        if not has_primary_root(project, git, snapshot):
+            drop("docs_layout_differs_at_question_date")
             continue
         for item in gold:
             item["status_at_snapshot"] = _gold_status(project, git, snapshot, item["path"], item["anchor"])
@@ -177,7 +198,11 @@ def build_snapshots(project: Project, questions: list[dict[str, Any]], data_dir:
                "questions_in": len(questions), "questions_kept": len(kept), "dropped": len(dropped),
                "answerable_at_snapshot": sum(q["answerable_at_snapshot"] for q in kept),
                "unanswerable_at_snapshot": sum(not q["answerable_at_snapshot"] for q in kept),
-               "snapshots": commits, "drop_reasons": _count(d["reason"] for d in dropped)}
+               "snapshots": commits, "drop_reasons": _count(d["reason"] for d in dropped),
+               "kept_by_year": dict(sorted(_count(q["created_at"][:4] for q in kept).items())),
+               "dropped_by_year": dict(sorted(_count(d["created_at"][:4] for d in dropped).items())),
+               "kept_date_range": [min(q["created_at"] for q in kept), max(q["created_at"] for q in kept)]
+               if kept else None}
     write_jsonl(project_dir / "questions.jsonl", kept)
     write_jsonl(project_dir / "dropped.jsonl", dropped)
     write_json(project_dir / "snapshots.json", summary)
