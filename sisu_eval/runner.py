@@ -282,3 +282,45 @@ def run_variant(data_dir: Path, project_name: str, variant: Variant, questions: 
 
 def safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", value)
+
+
+# Status ------------------------------------------------------------------------------
+
+OK_CALL_STATUSES = {"ok", "partial", None}
+
+
+def variant_status(data_dir: Path, project_name: str, variant: Variant, questions: list[Mapping[str, Any]], *,
+                   head_check: bool = True) -> dict[str, Any]:
+    """Progress and health of one variant's results file."""
+
+    latest = {}
+    for row in read_jsonl(results_path(data_dir, project_name, variant.name)):
+        latest[(row["qid"], row["corpus"])] = row
+    expected = {(q["qid"], corpus) for corpus, q in plan_jobs(questions, head_check=head_check)}
+    rows = [r for key, r in latest.items() if key in expected]
+    calls = [c for r in rows for c in r.get("model_calls") or ()]
+    walls = sorted(float(r["wall_s"]) for r in rows if isinstance(r.get("wall_s"), (int, float)))
+    bad_calls = sum(1 for c in calls if c.get("status") not in OK_CALL_STATUSES)
+    return {"variant": variant.name, "done": len(rows), "expected": len(expected),
+            "run_errors": sum(1 for r in rows if r.get("run_error")),
+            "answered": sum(1 for r in rows if r.get("answered")),
+            "median_s": walls[len(walls) // 2] if walls else None,
+            "p90_s": walls[min(len(walls) - 1, int(0.9 * len(walls)))] if walls else None,
+            "calls": len(calls), "bad_calls": bad_calls,
+            "bad_call_share": (bad_calls / len(calls)) if calls else None,
+            "thinking_chars_mean": (sum(c.get("thinking_chars") or 0 for c in calls) / len(rows)) if rows else None,
+            "hours_left_estimate": (walls[len(walls) // 2] * (len(expected) - len(rows)) / 3600) if walls else None}
+
+
+def is_broken(status: Mapping[str, Any], *, min_rows: int = 5) -> str | None:
+    """A reason to stop the run, or None. Needs at least ``min_rows`` results."""
+
+    if status["done"] < min_rows:
+        return None
+    if status["run_errors"] > status["done"] / 2:
+        return f"{status['run_errors']} of {status['done']} questions crashed"
+    if status["answered"] == 0:
+        return "no question was answered"
+    if status["bad_call_share"] is not None and status["bad_call_share"] > 0.5:
+        return f"{100 * status['bad_call_share']:.0f}% of model calls failed"
+    return None

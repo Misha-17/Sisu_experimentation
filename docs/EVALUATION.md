@@ -3,7 +3,7 @@
 `python -m sisu_eval` evaluates the assistant on **real questions with real documents and no human participants**:
 
 1. **Mine** public threads where a newcomer asked a question and a maintainer answered with a link to the project's docs. The maintainer's reply is the reference answer and the linked page (and section) is the gold evidence.
-2. **Snapshot** the docs from git **as they stood when the question was asked** (start of its week by default). Docs written later cannot leak in. If the linked page or section did not exist yet, the question is *unanswerable at its date*, and the correct behaviour is to refuse. Those questions are also asked again against current docs (`--head-check`).
+2. **Snapshot** the docs from git **as they stood when the question was asked** (start of its month by default). Docs written later cannot leak in. If the linked page or section did not exist yet, the question is *unanswerable at its date*, and the correct behaviour is to refuse. Those questions are also asked again against current docs (`--head-check`).
 3. **Run** every variant: the two launch profiles (`normal`, `thinking`), a control with thinking off but the thinking budgets (`normal_long_budget`), ablations, and a plain RAG baseline.
 4. **Judge** answer correctness against the maintainer's reply, and check whether each answer is supported by its cited passages. The default judge is `gpt-oss:20b`, a different model family from the Gemma 4 generator.
 5. **Calibrate** the judge against two human raters (Cohen's kappa) before reporting its numbers. Rating is done by co-authors, not study participants.
@@ -11,6 +11,8 @@
 7. **Report** means with 95% bootstrap CIs and paired differences against `normal`.
 
 All data goes to `eval_data/<project>/` (ignored by Git).
+
+For the two-machine workflow (questions collected on a laptop, runs on the GPU PC with one command: `scripts/run_full_eval.py`), follow [RUNNING.md](../RUNNING.md). The commands below are the individual steps that script runs. `python -m sisu_eval status --project fastapi` shows progress, speed and failed model calls per variant at any time.
 
 ## Projects
 
@@ -120,5 +122,5 @@ Mined question and answer text stays in `eval_data/` on your machine. For a pape
 - The gold evidence is the page the maintainer linked. Another page may also answer the question, so recall is a lower bound.
 - The maintainer's reply can contain advice that is not in the docs, so a correct docs-based answer can be graded partial.
 - `answerable_at_snapshot` comes from file and heading existence. A page can exist and still not contain the answer yet. The review pass is where you catch that.
-- Week granularity means a snapshot can be up to a week older than the question. Use `--granularity day` for exact dates at the cost of more snapshots.
+- Month granularity (the default) means a snapshot can be up to a month older than the question, so a page added in the same month counts as not yet existing. Use `--granularity week` or `day` for closer dates at the cost of more snapshots to store and index (each snapshot is a full copy of the docs).
 - An LLM judge has its own errors and biases. Report its kappa against your raters next to every number it produces.

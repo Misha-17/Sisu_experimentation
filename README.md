@@ -17,7 +17,7 @@ This is an application built around existing pretrained models. It does not trai
 
 Ollama counts thinking tokens against each call's output limit, and thinking makes every call slower, so the `thinking` profile raises every budget thinking consumes. Without that, planning and review calls run out of tokens mid-JSON or hit their time caps and are skipped. Set `SISU_READER_VARIANT=thinking` (or `normal`) to switch profiles in either copy. Any `SISU_READER_*` variable you set yourself still wins.
 
-The [evaluation pipeline](docs/EVALUATION.md) (`python -m sisu_eval`) measures both profiles, plus ablations and a plain RAG baseline, on real newcomer questions mined from public project forums, answered against the documentation as it stood on each question's date.
+**To run the evaluation, follow [RUNNING.md](RUNNING.md).** The [evaluation pipeline](docs/EVALUATION.md) (`python -m sisu_eval`) measures both profiles, plus ablations and a plain RAG baseline, on real newcomer questions mined from public project forums, answered against the documentation as it stood on each question's date.
 
 ## Contents
 
@@ -727,7 +727,7 @@ The worker uses the upstream threshold 0.5; it does not fit that threshold on th
 ├── requirements-dev.txt         # Test dependencies
 ├── requirements-ocr.txt         # Optional PDF OCR rendering dependency
 ├── requirements-audit.txt       # Separate optional MiniCheck environment
-├── scripts/                     # Model installation and setup helpers
+├── scripts/                     # Model setup helpers and run_full_eval.py (unattended evaluation run)
 ├── model_manifests/             # Pinned encoder hashes; no model weights
 ├── examples/documents/          # Small fictional onboarding documents
 ├── sisu_reader/                 # V10 engine plus required inherited infrastructure
@@ -735,6 +735,7 @@ The worker uses the upstream threshold 0.5; it does not fit that threshold on th
 ├── tests/                       # Focused runtime regression tests
 ├── VARIANT                      # Launch profile for this copy: normal or thinking
 ├── sisu_eval/                   # Evaluation pipeline (python -m sisu_eval); see docs/EVALUATION.md
+├── RUNNING.md                   # Step-by-step: collect questions (laptop), run everything (GPU PC)
 ├── eval_data/                   # Created by the evaluation; ignored by Git
 ├── models/                      # Downloaded locally; ignored by Git
 └── workspace/                   # Created locally; ignored by Git
@@ -755,7 +756,7 @@ python -m pip install -r requirements-dev.txt
 python -m pytest tests -q
 ```
 
-The focused tests exercise retrieval, immutable source binding, answer records, revisions, budgets, the thinking and ablation switches, and the evaluation pipeline (mining fixtures, dated git snapshots, runs, judging, metrics and the access-control test) with controlled fixtures and a scripted model. All 150 tests passed on Linux with Python 3.13 and no PyTorch installed (the encoder is imported lazily). They were not rerun on Windows for this build. They do not establish answer accuracy for arbitrary real corpora. For a live smoke test, finish setup, index `examples/documents`, run `doctor`, ask a question grounded in an example file, and open its citations in the browser. To assess your deployment, use separate development/test questions and compare both complete answers and material errors against actual sources; do not treat an assistant's self-review as a benchmark ground truth.
+The focused tests exercise retrieval, immutable source binding, answer records, revisions, budgets, the thinking and ablation switches, and the evaluation pipeline (mining fixtures, dated git snapshots, runs, judging, metrics and the access-control test) with controlled fixtures and a scripted model. All 156 tests passed on Linux with Python 3.13 and no PyTorch installed (the encoder is imported lazily). They were not rerun on Windows for this build. They do not establish answer accuracy for arbitrary real corpora. For a live smoke test, finish setup, index `examples/documents`, run `doctor`, ask a question grounded in an example file, and open its citations in the browser. To assess your deployment, use separate development/test questions and compare both complete answers and material errors against actual sources; do not treat an assistant's self-review as a benchmark ground truth.
 
 During export, **119 tests passed** (103 runtime tests and 16 model-setup tests). A real example indexing run, readiness check, generated answer, and HTTP UI/asset delivery check passed using the existing Windows Python 3.11 environment and already cached models. This validates the local source export; a fresh network installation, every operating system, and arbitrary corpus accuracy were not tested in that check.
 

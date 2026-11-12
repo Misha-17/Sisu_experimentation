@@ -1,7 +1,7 @@
 """Dated documentation snapshots and gold-evidence resolution.
 
 Each question is answered against the docs as they stood at the start of its
-time bucket (day/week/month), so documentation written later cannot leak in.
+time bucket (day/week/month; month by default), so documentation written later cannot leak in.
 A gold link whose file or section did not exist yet makes the question
 unanswerable at that snapshot; the same question is also kept for the
 current (HEAD) snapshot to test that the answer appears once docs exist.
@@ -133,7 +133,7 @@ def _gold_status(project: Project, git: Git, commit: str, path: str, anchor: str
 
 
 def build_snapshots(project: Project, questions: list[dict[str, Any]], data_dir: Path, *,
-                    granularity: str = "week", git: Git | None = None) -> dict[str, Any]:
+                    granularity: str = "month", git: Git | None = None) -> dict[str, Any]:
     """Resolve gold evidence, assign dated snapshots and export their trees."""
 
     project_dir = data_dir / project.name

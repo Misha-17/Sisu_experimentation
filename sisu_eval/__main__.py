@@ -43,7 +43,8 @@ def _parser() -> argparse.ArgumentParser:
     mine.add_argument("--no-cache", action="store_true", help="Do not reuse cached API responses")
 
     snap = command("snapshot", "Resolve gold docs, assign dated snapshots, export doc trees")
-    snap.add_argument("--granularity", choices=("day", "week", "month"), default="week")
+    snap.add_argument("--granularity", choices=("day", "week", "month"), default="month",
+                      help="Snapshot at the start of the question's day/week/month (default month: fewer snapshots to index)")
 
     review = command("review-export", "Write a CSV for a human pass over the mined set")
     review.add_argument("--out", type=Path)
@@ -78,6 +79,10 @@ def _parser() -> argparse.ArgumentParser:
     report = command("report", "Write report.md, report.json and metrics.csv")
     report.add_argument("--variants")
     report.add_argument("--judge-model", default=None)
+
+    status = command("status", "Progress, speed and health per variant")
+    status.add_argument("--variants")
+    status.add_argument("--check", help="Exit with code 3 if this variant looks broken (crashes, no answers, failed calls)")
 
     command("export-public", "IDs, URLs, commits and gold paths for a public release (no text)")
     return parser
@@ -174,6 +179,26 @@ def main(argv=None) -> int:
         chosen = select_variants(variants, args.variants)
         report = build_report(data_dir, project.name, chosen, reference, judge_model, project=project)
         _print({"report": str(data_dir / project.name / "report.md"), "variants": list(report["variants"])})
+        return 0
+
+    if args.command == "status":
+        from .runner import is_broken, variant_status
+        rows = [variant_status(data_dir, project.name, v, questions) for v in select_variants(variants, args.variants)]
+        print(f"{'variant':<20} {'done':>11} {'answered':>9} {'median s':>9} {'p90 s':>7} {'bad calls':>10} {'hours left':>11}")
+        for r in rows:
+            def num(value, digits=0):
+                return "-" if value is None else f"{value:.{digits}f}"
+            bad = "-" if r["bad_call_share"] is None else f"{r['bad_calls']} ({100 * r['bad_call_share']:.0f}%)"
+            print(f"{r['variant']:<20} {r['done']:>5}/{r['expected']:<5} {r['answered']:>9} {num(r['median_s']):>9} "
+                  f"{num(r['p90_s']):>7} {bad:>10} {num(r['hours_left_estimate'], 1):>11}")
+        if args.check:
+            if args.check not in variants:
+                print(f"error: unknown variant {args.check!r}", file=sys.stderr)
+                return 2
+            reason = is_broken(variant_status(data_dir, project.name, variants[args.check], questions))
+            if reason:
+                print(f"STOP: variant {args.check} looks broken: {reason}", file=sys.stderr)
+                return 3
         return 0
 
     if args.command == "export-public":
