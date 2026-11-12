@@ -503,3 +503,50 @@ def test_questions_from_before_the_docs_layout_are_dropped_not_fatal(tmp_path):
     assert summary["drop_reasons"] == {"docs_layout_differs_at_question_date": 1}
     assert summary["kept_by_year"] == {"2024": 1} and summary["dropped_by_year"] == {"2023": 1}
     assert summary["granularity"] == "month"
+
+
+def test_heading_anchor_syntaxes():
+    from sisu_eval.common import anchor_title, split_heading
+    assert split_heading("Request Body { #request-body }") == ("Request Body", {"request-body"})
+    assert split_heading("Setup {: #setup-id .note }") == ("Setup", {"setup-id"})
+    assert split_heading("Plain {not an attr list}") == ("Plain {not an attr list}", set())
+    text = "# Request Body { #request-body }\n\n## Use the model { #use-model }\n"
+    assert {"request-body", "use-model", "use-the-model"} <= heading_slugs(text)
+    assert anchor_title(text, "use-model") == "use-the-model"
+    from sisu_eval.metrics import _section_slugs
+    assert "request-body" in _section_slugs({"section_path": "Tutorial > Request Body { #request-body }"})
+
+
+def test_exact_question_time_and_renamed_anchor_and_cleanup(tmp_path):
+    repo = tmp_path / "up"
+    (repo / "docs").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    (repo / "docs" / "guide.md").write_text("# Guide\n\n## Use the model\n\nCall model.run().\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "guide", date="2024-01-10T12:00:00Z")
+    (repo / "docs" / "cache.md").write_text("# Caching\n\nSet CACHE=1.\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "cache page on Feb 5", date="2024-02-05T12:00:00Z")
+    (repo / "docs" / "guide.md").write_text("# Guide { #guide }\n\n## Use the model { #use-model }\n\nCall model.run().\n",
+                                            encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "explicit anchors", date="2024-06-01T12:00:00Z")
+    project = _project(repo)
+    data = tmp_path / "data"
+    ensure_clone(project, data)
+    base = _mined()[0]
+    cache_q = {**base, "qid": "toy:cache", "created_at": "2024-02-20T10:00:00Z",
+               "answer_created_at": "2024-02-21T10:00:00Z", "doc_links": ["https://toy.dev/cache/"]}
+    anchor_q = {**base, "qid": "toy:anchor", "created_at": "2024-03-20T10:00:00Z",
+                "answer_created_at": "2024-07-01T10:00:00Z", "doc_links": ["https://toy.dev/guide/#use-model"]}
+    stale = data / "toy" / "snapshots" / ("f" * 40)
+    stale.mkdir(parents=True)
+    summary = build_snapshots(project, [cache_q, anchor_q], data)
+    questions = {q["qid"]: q for q in load_questions(project, data)}
+    assert questions["toy:cache"]["answerable_at_snapshot"]
+    assert questions["toy:cache"]["snapshot_reason"] == "exact_question_time"
+    assert questions["toy:anchor"]["answerable_at_snapshot"]
+    assert questions["toy:anchor"]["gold"][0]["status_at_snapshot"] == "present"
+    assert summary["exact_time_snapshots"] == 1 and summary["unanswerable_because"] == {}
+    assert summary["median_days_to_answer"]["answerable"] == 52.0  # (1 + 103) / 2
+    assert not stale.exists()

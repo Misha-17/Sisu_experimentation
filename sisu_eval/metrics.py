@@ -6,7 +6,7 @@ import re
 from statistics import median
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from .common import slugify
+from .common import slugify, split_heading
 
 PRODUCT_DEADLINE_S = 95.0
 BOOTSTRAP_RESAMPLES = 10_000
@@ -16,10 +16,18 @@ SEED = 7
 # Per answer -------------------------------------------------------------------------
 
 def _section_slugs(section: Mapping[str, Any]) -> set[str]:
-    parts = re.split(r"\s*(?:>|/|›|»|\|)\s*", str(section.get("section_path") or ""))
+    """Slugs and explicit ids of every heading on a passage's section path."""
+
+    parts = re.split(r"\s*(?:>|/|›|»|\|)\s*(?![^{]*\})", str(section.get("section_path") or ""))
     parts += [str(h) for h in section.get("headers") or ()]
     parts.append(str(section.get("locator") or ""))
-    return {slugify(p) for p in parts if p and slugify(p)}
+    slugs = set()
+    for part in parts:
+        title, ids = split_heading(part)
+        slugs |= ids
+        if slugify(title):
+            slugs.add(slugify(title))
+    return slugs
 
 
 def score_answer(question: Mapping[str, Any], row: Mapping[str, Any], judgment: Mapping[str, Any] | None

@@ -11,12 +11,13 @@ from __future__ import annotations
 from datetime import timedelta
 import io
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import subprocess
 import tarfile
 from typing import Any, Iterable
 
-from .common import bucket_start, heading_slugs, iso, parse_time, read_jsonl, write_json, write_jsonl
+from .common import anchor_title, bucket_start, heading_slugs, iso, parse_time, read_jsonl, write_json, write_jsonl
 from .projects import Project
 
 
@@ -137,13 +138,25 @@ def has_primary_root(project: Project, git: Git, commit: str) -> bool:
     return any(path.startswith(prefix) for path in git.files(commit))
 
 
-def _gold_status(project: Project, git: Git, commit: str, path: str, anchor: str) -> str:
+def _gold_status(project: Project, git: Git, commit: str, path: str, anchor: str, *,
+                 answer_commit: str | None = None) -> str:
+    """present / file_added_later / section_added_later for one gold link.
+
+    A section counts as present if its anchor exists, or if a heading with the
+    same title exists (anchor syntax and slug rules change over time, for
+    example FastAPI's switch to explicit ``{ #id }`` anchors in 2025-08).
+    """
+
     if path not in git.files(commit):
         return "file_added_later"
     if anchor:
-        text = git.text(commit, path) or ""
-        if anchor not in heading_slugs(text):
-            return "section_added_later"
+        slugs = heading_slugs(git.text(commit, path) or "")
+        if anchor in slugs:
+            return "present"
+        title = anchor_title(git.text(answer_commit, path) or "", anchor) if answer_commit else None
+        if title and title in slugs:
+            return "present"
+        return "section_added_later"
     return "present"
 
 
@@ -181,19 +194,45 @@ def build_snapshots(project: Project, questions: list[dict[str, Any]], data_dir:
         if not has_primary_root(project, git, snapshot):
             drop("docs_layout_differs_at_question_date")
             continue
-        for item in gold:
-            item["status_at_snapshot"] = _gold_status(project, git, snapshot, item["path"], item["anchor"])
-            item["status_at_head"] = _gold_status(project, git, head, item["path"], item["anchor"])
+
+        def statuses(commit: str) -> list[str]:
+            return [_gold_status(project, git, commit, g["path"], g["anchor"], answer_commit=answer_commit)
+                    for g in gold]
+
+        at_snapshot = statuses(snapshot)
+        snapshot_reason = "bucket_start"
+        if "present" not in at_snapshot:
+            # The docs may have changed between the bucket start and the
+            # question itself; then the bucket snapshot would wrongly make the
+            # question unanswerable. Use the exact question time instead.
+            exact = git.commit_before(branch, iso(parse_time(question["created_at"])))
+            if exact and exact != snapshot and has_primary_root(project, git, exact):
+                at_exact = statuses(exact)
+                if "present" in at_exact:
+                    snapshot, at_snapshot, snapshot_reason = exact, at_exact, "exact_question_time"
+        for item, status in zip(gold, at_snapshot):
+            item["status_at_snapshot"] = status
+            item["status_at_head"] = _gold_status(project, git, head, item["path"], item["anchor"],
+                                                  answer_commit=answer_commit)
             item["indexed_path"] = project.indexed_name(item["path"])
         answerable = any(g["status_at_snapshot"] == "present" for g in gold)
+        days = (parse_time(question["answer_created_at"]) - parse_time(question["created_at"])).days
         kept.append({**question, "bucket_start": iso(start), "granularity": granularity,
-                     "snapshot_commit": snapshot, "answer_commit": answer_commit, "head_commit": head,
+                     "snapshot_commit": snapshot, "snapshot_reason": snapshot_reason, "days_to_answer": days,
+                     "answer_commit": answer_commit, "head_commit": head,
                      "gold": gold, "answerable_at_snapshot": answerable,
                      "answerable_at_head": any(g["status_at_head"] == "present" for g in gold)})
     snapshots_dir = project_dir / "snapshots"
     commits = sorted({q["snapshot_commit"] for q in kept} | ({head} if kept else set()))
     for commit in commits:
         export_snapshot(project, git, commit, snapshots_dir)
+    # Remove snapshot trees left over from earlier runs (derived from git; they
+    # would only inflate the folder that is sent to the GPU machine).
+    if snapshots_dir.exists():
+        for old in snapshots_dir.iterdir():
+            if old.is_dir() and re.fullmatch(r"[0-9a-f]{40}", old.name) and old.name not in commits:
+                shutil.rmtree(old)
+    unanswerable = [q for q in kept if not q["answerable_at_snapshot"]]
     summary = {"project": project.name, "branch": branch, "head_commit": head, "granularity": granularity,
                "questions_in": len(questions), "questions_kept": len(kept), "dropped": len(dropped),
                "answerable_at_snapshot": sum(q["answerable_at_snapshot"] for q in kept),
@@ -202,11 +241,26 @@ def build_snapshots(project: Project, questions: list[dict[str, Any]], data_dir:
                "kept_by_year": dict(sorted(_count(q["created_at"][:4] for q in kept).items())),
                "dropped_by_year": dict(sorted(_count(d["created_at"][:4] for d in dropped).items())),
                "kept_date_range": [min(q["created_at"] for q in kept), max(q["created_at"] for q in kept)]
-               if kept else None}
+               if kept else None,
+               "unanswerable_because": _count("+".join(sorted({g["status_at_snapshot"] for g in q["gold"]}))
+                                              for q in unanswerable),
+               "exact_time_snapshots": sum(1 for q in kept if q["snapshot_reason"] == "exact_question_time"),
+               "median_days_to_answer": {
+                   "answerable": _median([q["days_to_answer"] for q in kept if q["answerable_at_snapshot"]]),
+                   "unanswerable": _median([q["days_to_answer"] for q in unanswerable])},
+               "answerable_at_head": sum(1 for q in kept if q["answerable_at_head"])}
     write_jsonl(project_dir / "questions.jsonl", kept)
     write_jsonl(project_dir / "dropped.jsonl", dropped)
     write_json(project_dir / "snapshots.json", summary)
     return summary
+
+
+def _median(values: list[int]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    return float(ordered[middle]) if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
 
 
 def _count(values: Iterable[str]) -> dict[str, int]:

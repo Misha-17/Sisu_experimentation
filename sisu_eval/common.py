@@ -178,28 +178,60 @@ def slugify(text: str) -> str:
     return re.sub(r"[\s_-]+", "-", text).strip("-")
 
 
-def heading_slugs(text: str) -> set[str]:
-    """Slugs of Markdown ATX headings and reStructuredText underlined titles."""
+_ATTR_LIST = re.compile(r"\s*\{:?\s*([^{}]*)\}\s*$")
 
-    slugs = set()
+
+def split_heading(title: str) -> tuple[str, set[str]]:
+    """Heading text without a trailing attribute list, plus the ids it declares.
+
+    Handles ``{#id}``, ``{ #id }`` (FastAPI since 2025-08) and ``{: #id .cls }``.
+    """
+
+    match = _ATTR_LIST.search(title)
+    if match and "#" in match.group(1):
+        ids = {x.casefold() for x in re.findall(r"#([\w-]+)", match.group(1))}
+        return title[:match.start()].strip(), ids
+    return title.strip(), set()
+
+
+def headings(text: str) -> list[tuple[str, set[str]]]:
+    """``(title_slug, all_slugs)`` for each Markdown ATX heading, reStructuredText
+    underlined title and reStructuredText ``.. _label:`` target."""
+
+    found: list[tuple[str, set[str]]] = []
     lines = text.splitlines()
     for index, line in enumerate(lines):
         match = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
         if match:
-            title = re.sub(r"\{#([\w-]+)\}\s*$", "", match.group(1)).strip()
-            slugs.add(slugify(title))
-            explicit = re.search(r"\{#([\w-]+)\}", match.group(1))
-            if explicit:
-                slugs.add(explicit.group(1).casefold())
+            title, ids = split_heading(match.group(1))
+            slug = slugify(title)
+            found.append((slug, {slug} | ids))
             continue
         if index + 1 < len(lines) and line.strip():
             under = lines[index + 1].strip()
             if len(under) >= max(3, len(line.strip()) - 2) and re.fullmatch(r"([=\-~^\"'`#*+])\1+", under):
-                slugs.add(slugify(line.strip()))
+                slug = slugify(line.strip())
+                found.append((slug, {slug}))
+                continue
         label = re.match(r"^\.\.\s+_([\w-]+):\s*$", line)
         if label:
-            slugs.add(label.group(1).casefold())
-    return slugs
+            found.append(("", {label.group(1).casefold()}))
+    return found
+
+
+def heading_slugs(text: str) -> set[str]:
+    """Every anchor a heading in ``text`` can be linked by."""
+
+    return {slug for _, slugs in headings(text) for slug in slugs if slug}
+
+
+def anchor_title(text: str, anchor: str) -> str | None:
+    """Title slug of the heading that ``anchor`` points to in ``text``."""
+
+    for title, slugs in headings(text):
+        if anchor in slugs and title:
+            return title
+    return None
 
 
 # HTTP ---------------------------------------------------------------------------
