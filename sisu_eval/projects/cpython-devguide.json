@@ -1,0 +1,44 @@
+{
+  "name": "cpython-devguide",
+  "description": "CPython Developer's Guide (contributor onboarding); questions from discuss.python.org answered with a devguide link by core developers, staff, or as the accepted solution.",
+  "docs_repo": "https://github.com/python/devguide.git",
+  "docs_roots": [
+    ""
+  ],
+  "exclude_globs": [
+    ".github/*",
+    "_static/*",
+    "_templates/*",
+    "_extensions/*",
+    "requirements*.txt"
+  ],
+  "link_patterns": [
+    {
+      "regex": "^https?://devguide\\.python\\.org/(?P<path>[^?#]*)",
+      "root": ""
+    },
+    {
+      "regex": "^https?://github\\.com/python/devguide/(?:blob|tree)/[^/]+/(?P<path>[^?#]+)",
+      "root": ""
+    }
+  ],
+  "sources": [
+    {
+      "type": "discourse",
+      "base_url": "https://discuss.python.org",
+      "categories": [
+        "core-dev",
+        "documentation",
+        "help"
+      ],
+      "maintainer_groups": [
+        "committers",
+        "core-developers",
+        "triagers"
+      ],
+      "pause_s": 1.5
+    }
+  ],
+  "maintainers": [],
+  "trust_accepted_answers": true
+}

@@ -1,0 +1,87 @@
+{
+  "reference": "normal",
+  "common": {
+    "SISU_READER_TRACE_MODE": "diagnostic",
+    "SISU_READER_TRACE_DAYS": "3650",
+    "SISU_READER_TRACE_MAX_MB": "16384",
+    "SISU_READER_STRATEGY_LEARNING": "false",
+    "SISU_READER_CONTEXT_TOKENS": "32768",
+    "SISU_READER_MAX_MODEL_CALLS": "30",
+    "SISU_READER_KEEP_ALIVE": "30m"
+  },
+  "variants": {
+    "normal": {
+      "description": "Normal copy: Gemma 4 12B, thinking off, product budgets (95 s).",
+      "engine": "sisu",
+      "env": {
+        "SISU_READER_MODEL": "gemma4:12b",
+        "SISU_READER_REASONING": "off",
+        "SISU_READER_DEADLINE_S": "95",
+        "SISU_READER_REQUEST_TIMEOUT_S": "88",
+        "SISU_READER_MAX_OUTPUT_TOKENS": "32768",
+        "SISU_READER_LOCK_TIMEOUT_S": "120",
+        "SISU_READER_THINKING_EXTRA_TOKENS": "0",
+        "SISU_READER_THINKING_TIME_SCALE": "1.0"
+      }
+    },
+    "thinking": {
+      "description": "Thinking copy: Gemma 4 12B, thinking on, +3072 output tokens per call, 4x call time caps, 420 s deadline.",
+      "extends": "normal",
+      "env": {
+        "SISU_READER_REASONING": "high",
+        "SISU_READER_THINKING_EXTRA_TOKENS": "3072",
+        "SISU_READER_THINKING_TIME_SCALE": "4.0",
+        "SISU_READER_DEADLINE_S": "420",
+        "SISU_READER_REQUEST_TIMEOUT_S": "240",
+        "SISU_READER_MAX_OUTPUT_TOKENS": "65536",
+        "SISU_READER_LOCK_TIMEOUT_S": "600"
+      }
+    },
+    "normal_long_budget": {
+      "description": "Thinking off with the thinking copy's deadline and token budgets; separates the effect of thinking from the effect of more time.",
+      "extends": "normal",
+      "env": {
+        "SISU_READER_DEADLINE_S": "420",
+        "SISU_READER_REQUEST_TIMEOUT_S": "240",
+        "SISU_READER_MAX_OUTPUT_TOKENS": "65536",
+        "SISU_READER_LOCK_TIMEOUT_S": "600"
+      }
+    },
+    "normal_e4b": {
+      "description": "Normal settings with the smaller Gemma 4 E4B generator.",
+      "extends": "normal",
+      "env": {"SISU_READER_MODEL": "gemma4:e4b"}
+    },
+    "lexical_only": {
+      "description": "BM25 lane only (same passages).",
+      "extends": "normal",
+      "env": {"SISU_READER_RETRIEVAL_LANES": "lexical"}
+    },
+    "dense_only": {
+      "description": "E5 lane only (same passages).",
+      "extends": "normal",
+      "env": {"SISU_READER_RETRIEVAL_LANES": "dense"}
+    },
+    "no_planning": {
+      "description": "No question planning; the original question is the only facet.",
+      "extends": "normal",
+      "env": {"SISU_READER_QUESTION_PLANNING": "false"}
+    },
+    "no_review": {
+      "description": "No source review and no revision.",
+      "extends": "normal",
+      "env": {"SISU_READER_CLAIM_REVIEW": "false"}
+    },
+    "no_neighbors": {
+      "description": "No adjacent passage or block context.",
+      "extends": "normal",
+      "env": {"SISU_READER_NEIGHBOR_CONTEXT": "false"}
+    },
+    "plain_rag": {
+      "description": "Baseline: same hybrid retrieval, one generation call with [P#] citations, no planning, no claim binding, no review.",
+      "extends": "normal",
+      "engine": "plain_rag",
+      "env": {}
+    }
+  }
+}

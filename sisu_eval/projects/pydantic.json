@@ -1,0 +1,45 @@
+{
+  "name": "pydantic",
+  "description": "Pydantic user documentation; newcomer questions from GitHub Discussions answered by maintainers with a docs link.",
+  "docs_repo": "https://github.com/pydantic/pydantic.git",
+  "docs_roots": [
+    "docs"
+  ],
+  "exclude_globs": [
+    "docs/img/*",
+    "docs/theme/*",
+    "docs/extra/*",
+    "docs/plugins/*"
+  ],
+  "link_patterns": [
+    {
+      "regex": "^https?://docs\\.pydantic\\.dev/(?:latest|dev|\\d+\\.\\d+(?:\\.\\d+)?)/(?P<path>[^?#]*)",
+      "root": "docs"
+    },
+    {
+      "regex": "^https?://docs\\.pydantic\\.dev/(?P<path>(?!latest/|dev/|\\d)[^?#]*)",
+      "root": "docs"
+    },
+    {
+      "regex": "^https?://pydantic-docs\\.helpmanual\\.io/(?P<path>[^?#]*)",
+      "root": "docs"
+    },
+    {
+      "regex": "^https?://github\\.com/pydantic/pydantic/(?:blob|tree)/[^/]+/(?P<path>[^?#]+)",
+      "root": ""
+    }
+  ],
+  "sources": [
+    {
+      "type": "github_discussions",
+      "repo": "pydantic/pydantic",
+      "categories": [
+        "Question",
+        "Questions",
+        "Q&A"
+      ]
+    }
+  ],
+  "maintainers": [],
+  "trust_accepted_answers": false
+}

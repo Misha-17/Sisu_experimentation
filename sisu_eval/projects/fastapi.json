@@ -1,0 +1,41 @@
+{
+  "name": "fastapi",
+  "description": "FastAPI user documentation plus the docs_src code examples it includes; newcomer questions from GitHub Discussions answered by maintainers with a docs link.",
+  "docs_repo": "https://github.com/fastapi/fastapi.git",
+  "docs_roots": [
+    "docs/en/docs",
+    "docs_src"
+  ],
+  "exclude_globs": [
+    "docs/en/docs/img/*",
+    "docs/en/docs/js/*",
+    "docs/en/docs/css/*",
+    "docs/en/docs/overrides/*"
+  ],
+  "link_patterns": [
+    {
+      "regex": "^https?://fastapi\\.tiangolo\\.com/(?P<path>[^?#]*)",
+      "root": "docs/en/docs"
+    },
+    {
+      "regex": "^https?://github\\.com/(?:fastapi|tiangolo)/fastapi/(?:blob|tree)/[^/]+/(?P<path>[^?#]+)",
+      "root": ""
+    }
+  ],
+  "sources": [
+    {
+      "type": "github_discussions",
+      "repo": "fastapi/fastapi",
+      "categories": [
+        "Questions"
+      ]
+    }
+  ],
+  "maintainers": [],
+  "trust_accepted_answers": false,
+  "convert_to_txt": [
+    ".rst",
+    ".mdx",
+    ".py"
+  ]
+}
