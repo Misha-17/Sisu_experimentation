@@ -41,6 +41,7 @@ def _parser() -> argparse.ArgumentParser:
     mine.add_argument("--limit", type=int, default=400, help="Maximum kept questions per source")
     mine.add_argument("--since", help="Only threads created on or after this date (YYYY-MM-DD)")
     mine.add_argument("--no-cache", action="store_true", help="Do not reuse cached API responses")
+    mine.add_argument("--max-scan", type=int, help="Discourse only: stop after reading this many threads")
 
     snap = command("snapshot", "Resolve gold docs, assign dated snapshots, export doc trees")
     snap.add_argument("--granularity", choices=("day", "week", "month"), default="month",
@@ -99,7 +100,7 @@ def main(argv=None) -> int:
         cache = None if args.no_cache else data_dir / project.name / "api_cache"
         since = parse_time(args.since) if args.since else None
         records = mine_project(project, limit_per_source=args.limit, token=os.environ.get("GITHUB_TOKEN", ""),
-                               since=since, cache_dir=cache)
+                               since=since, cache_dir=cache, max_scan=args.max_scan)
         count = write_jsonl(data_dir / project.name / "mined.jsonl", records)
         _print({"mined": count, "path": str(data_dir / project.name / "mined.jsonl")})
         return 0

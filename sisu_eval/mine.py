@@ -233,7 +233,8 @@ def mine_github_issues(project: Project, source: Mapping[str, Any], *, token: st
 # Discourse -------------------------------------------------------------------------------
 
 def mine_discourse(project: Project, source: Mapping[str, Any], *, limit: int, since: datetime | None = None,
-                   cache_dir: Path | None = None, fetch: Fetch = http_json, log=print) -> list[dict[str, Any]]:
+                   cache_dir: Path | None = None, fetch: Fetch = http_json, log=print,
+                   max_scan: int | None = None) -> list[dict[str, Any]]:
     base = source["base_url"].rstrip("/")
     pause = float(source.get("pause_s", 1.0))
     listing = fetch(f"{base}/categories.json?include_subcategories=true", cache_dir=None, pause_s=pause)
@@ -251,6 +252,7 @@ def mine_discourse(project: Project, source: Mapping[str, Any], *, limit: int, s
         log(f"note: categories not found on {base} and skipped: {skipped}", file=sys.stderr)
     groups = source.get("maintainer_groups", ())
     records: list[dict[str, Any]] = []
+    scanned = 0
     for category in chosen:
         page = 0
         while len(records) < limit:
@@ -266,6 +268,10 @@ def mine_discourse(project: Project, source: Mapping[str, Any], *, limit: int, s
                 if since is not None and parse_time(topic["created_at"]) < since:
                     stop = True
                     break
+                if max_scan is not None and scanned >= max_scan:
+                    stop = True
+                    break
+                scanned += 1
                 thread = fetch(f"{base}/t/{topic['id']}.json", cache_dir=cache_dir, pause_s=pause)
                 posts = thread.get("post_stream", {}).get("posts", [])
                 if not posts:
@@ -307,7 +313,8 @@ def mine_discourse(project: Project, source: Mapping[str, Any], *, limit: int, s
 
 
 def mine_project(project: Project, *, limit_per_source: int, token: str, since: datetime | None,
-                 cache_dir: Path | None, fetch: Fetch = http_json, log=print) -> list[dict[str, Any]]:
+                 cache_dir: Path | None, fetch: Fetch = http_json, log=print,
+                 max_scan: int | None = None) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for source in project.sources:
         kind = source["type"]
@@ -319,7 +326,7 @@ def mine_project(project: Project, *, limit_per_source: int, token: str, since: 
                                        cache_dir=cache_dir, fetch=fetch, log=log)
         elif kind == "discourse":
             found = mine_discourse(project, source, limit=limit_per_source, since=since, cache_dir=cache_dir,
-                                   fetch=fetch, log=log)
+                                   fetch=fetch, log=log, max_scan=max_scan)
         else:
             raise ValueError(f"Unknown source type {kind!r}")
         records.extend(found)

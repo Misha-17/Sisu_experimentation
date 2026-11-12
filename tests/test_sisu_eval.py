@@ -550,3 +550,25 @@ def test_exact_question_time_and_renamed_anchor_and_cleanup(tmp_path):
     assert summary["exact_time_snapshots"] == 1 and summary["unanswerable_because"] == {}
     assert summary["median_days_to_answer"]["answerable"] == 52.0  # (1 + 103) / 2
     assert not stale.exists()
+
+
+def test_nested_discourse_quotes_do_not_crash():
+    from sisu_eval.common import html_to_text_and_links
+    html = ('<aside class="quote"><blockquote><aside class="quote"><blockquote>inner</blockquote></aside>'
+            'outer</blockquote></aside><p>See <a href="https://a.dev/x">docs</a>.</p>')
+    text, links = html_to_text_and_links(html)
+    assert "inner" not in text and "outer" not in text and links == ["https://a.dev/x"]
+
+
+def test_generated_api_anchor_falls_back_to_page_level(snapshotted, tmp_path, docs_repo):
+    project = _project(docs_repo)
+    data = tmp_path / "data2"
+    ensure_clone(project, data)
+    question = {**_mined()[0], "qid": "toy:api", "doc_links": ["https://toy.dev/install/#toy.main.Model.run"]}
+    summary = build_snapshots(project, [question], data)
+    kept = load_questions(project, data)[0]
+    assert kept["answerable_at_snapshot"] and kept["gold"][0]["anchor_verified"] is False
+    assert summary["anchors_not_verifiable"] == 1 and summary["unanswerable_because"] == {}
+    row = {"corpus": "snapshot", "answered": True, "presented_docs": ["docs/install.md"], "presented_sections": [],
+           "citations": [], "model_calls": []}
+    assert score_answer(kept, row, None)["evidence_section_hit"] is None

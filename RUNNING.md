@@ -11,7 +11,7 @@ Mined questions contain forum text. Send `eval_data` by OneDrive, Teams or email
 
 ## Part A: Shivansh (Mac)
 
-**A1. Python environment, once (about 2 minutes).** The last command runs the test suite. It should end with `159 passed`.
+**A1. Python environment, once (about 2 minutes).** The last command runs the test suite. It should end with `161 passed`.
 
 ```bash
 cd ~/Downloads/Sisu_experimentation && git pull && conda create -y -n sisu python=3.11 && conda activate sisu && pip install -r requirements-test.txt && python -m pytest tests -q

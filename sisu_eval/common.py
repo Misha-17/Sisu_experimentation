@@ -153,7 +153,9 @@ def html_to_text_and_links(html: str) -> tuple[str, list[str]]:
 
     soup = BeautifulSoup(html or "", "html.parser")
     links = [a.get("href", "") for a in soup.find_all("a") if a.get("href", "").startswith(("http://", "https://"))]
-    for tag in soup.find_all(["aside", "blockquote"]):
+    for tag in list(soup.find_all(["aside", "blockquote"])):
+        if getattr(tag, "attrs", None) is None:
+            continue  # already removed together with an enclosing quote
         if "quote" in (tag.get("class") or []):
             tag.decompose()
     text = soup.get_text("\n")

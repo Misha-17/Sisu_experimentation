@@ -39,7 +39,7 @@ def score_answer(question: Mapping[str, Any], row: Mapping[str, Any], judgment: 
     status_key = "status_at_snapshot" if corpus == "snapshot" else "status_at_head"
     gold = [g for g in question["gold"] if g.get(status_key) == "present"] or question["gold"]
     gold_paths = {g["path"] for g in gold}
-    anchors = {(g["path"], g["anchor"]) for g in gold if g.get("anchor")}
+    anchors = {(g["path"], g["anchor"]) for g in gold if g.get("anchor") and g.get("anchor_verified", True)}
     presented = set(row.get("presented_docs") or ())
     sections = row.get("presented_sections") or []
     cited = {c.get("path") for c in row.get("citations") or ()}

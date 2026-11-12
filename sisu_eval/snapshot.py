@@ -138,6 +138,12 @@ def has_primary_root(project: Project, git: Git, commit: str) -> bool:
     return any(path.startswith(prefix) for path in git.files(commit))
 
 
+def anchor_verified(git: Git, answer_commit: str, path: str, anchor: str) -> bool:
+    """True when ``anchor`` is a heading in the source file at answer time."""
+
+    return bool(anchor) and anchor in heading_slugs(git.text(answer_commit, path) or "")
+
+
 def _gold_status(project: Project, git: Git, commit: str, path: str, anchor: str, *,
                  answer_commit: str | None = None) -> str:
     """present / file_added_later / section_added_later for one gold link.
@@ -149,6 +155,11 @@ def _gold_status(project: Project, git: Git, commit: str, path: str, anchor: str
 
     if path not in git.files(commit):
         return "file_added_later"
+    if anchor and answer_commit and not anchor_verified(git, answer_commit, path, anchor):
+        # Anchors generated at build time (API reference entries such as
+        # #pydantic.main.BaseModel) are not headings in the source file, so
+        # their existence cannot be dated. Fall back to page-level existence.
+        return "present"
     if anchor:
         slugs = heading_slugs(git.text(commit, path) or "")
         if anchor in slugs:
@@ -215,6 +226,7 @@ def build_snapshots(project: Project, questions: list[dict[str, Any]], data_dir:
             item["status_at_head"] = _gold_status(project, git, head, item["path"], item["anchor"],
                                                   answer_commit=answer_commit)
             item["indexed_path"] = project.indexed_name(item["path"])
+            item["anchor_verified"] = anchor_verified(git, answer_commit, item["path"], item["anchor"])
         answerable = any(g["status_at_snapshot"] == "present" for g in gold)
         days = (parse_time(question["answer_created_at"]) - parse_time(question["created_at"])).days
         kept.append({**question, "bucket_start": iso(start), "granularity": granularity,
@@ -244,6 +256,8 @@ def build_snapshots(project: Project, questions: list[dict[str, Any]], data_dir:
                if kept else None,
                "unanswerable_because": _count("+".join(sorted({g["status_at_snapshot"] for g in q["gold"]}))
                                               for q in unanswerable),
+               "anchors_not_verifiable": sum(1 for q in kept for g in q["gold"]
+                                             if g["anchor"] and not g["anchor_verified"]),
                "exact_time_snapshots": sum(1 for q in kept if q["snapshot_reason"] == "exact_question_time"),
                "median_days_to_answer": {
                    "answerable": _median([q["days_to_answer"] for q in kept if q["answerable_at_snapshot"]]),
